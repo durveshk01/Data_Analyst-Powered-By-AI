@@ -1,0 +1,77 @@
+# --------------------------------------------------------------- name hints ---
+_H = re.IGNORECASE
+_CAMEL_BOUNDARY = re.compile(r"(?<=[a-z0-9])(?=[A-Z])")
+
+
+def normalise_name(name: str) -> str:
+    """`UnitPrice` / `unit-price` / `Unit Price` -> `unit_price`."""
+    spaced = _CAMEL_BOUNDARY.sub("_", str(name))
+    return re.sub(r"[^a-z0-9]+", "_", spaced.lower()).strip("_")
+
+
+class NameHint:
+    """Matches whole name *tokens*, not substrings.
+
+    A plain substring search mis-types columns constantly: "discount" contains
+    "count", "page_views" contains "age", "internet" contains "net". Python's
+    ``\\b`` does not help either, because it treats ``_`` as a word character and
+    so fails to match "order_count". Instead the name is normalised to
+    snake_case and each term must be bounded by a non-letter on both sides
+    (start, end, ``_`` or a digit), with an optional plural "s".
+    """
+
+    def __init__(self, *terms: str, anchored: tuple[str, ...] = ()) -> None:
+        body = "|".join(sorted({re.escape(t) for t in terms}, key=len, reverse=True))
+        parts = [rf"(?<![a-z])(?:{body})s?(?![a-z])"] if body else []
+        parts.extend(anchored)
+        self.pattern = re.compile("|".join(parts), _H)
+
+    def search(self, name: str) -> re.Match[str] | None:
+        return self.pattern.search(normalise_name(name))
+
+
+CURRENCY_NAMES = NameHint(
+    "revenue", "sales", "amount", "amt", "price", "cost", "profit", "margin",
+    "spend", "budget", "income", "salary", "wage", "fee", "charge", "payment",
+    "invoice", "turnover", "gmv", "aov", "mrr", "arr", "value", "subtotal",
+    "expense", "cogs", "ltv", "cac", "earning", "inr", "usd", "rupee",
+)
+PERCENT_NAMES = NameHint(
+    "rate", "ratio", "percent", "percentage", "pct", "share", "conversion",
+    "churn", "growth", "ctr", "cvr", "utilisation", "utilization", "occupancy",
+    "completion", "bounce", "retention", "discount", "markup", "attach",
+    anchored=(r"_pc$",),
+)
+COUNT_NAMES = NameHint(
+    "count", "qty", "quantity", "quantities", "unit", "volume", "order",
+    "customer", "user", "visitor", "visit", "session", "click", "impression",
+    "item", "ticket", "lead", "signup", "transaction", "employee", "student",
+    "pageview", "headcount", "stock", "inventory",
+)
+ID_NAMES = NameHint(
+    "id", "uuid", "guid", "sku", "code", "number", "no", "ref", "serial",
+    "barcode", "account", "tracking", "pan", "gstin", "isbn", "ean", "upc",
+)
+TIME_NAMES = NameHint(
+    "date", "datetime", "timestamp", "time", "day", "week", "month", "quarter",
+    "year", "period", "dob", "created", "updated", "ordered", "shipped",
+    "delivered", "joined", "at", "on", "dt",
+)
+GEO_NAMES = NameHint(
+    "country", "nation", "state", "province", "region", "zone", "territory",
+    "district", "city", "town", "location", "area", "latitude", "longitude",
+    "lat", "lon", "lng", "zip", "zipcode", "postcode", "pincode", "pin",
+    "address", "continent", "market", "branch", "store", "warehouse", "site",
+)
+# Measures where a SUM is meaningless: per-unit prices, scores, rates and
+# durations. Summing "unit_price" over 30,000 orders yields a number with no
+# interpretation, so these default to MEAN.
+MEAN_ONLY_NAMES = NameHint(
+    "price", "rate", "score", "rating", "average", "avg", "mean", "median",
+    "per", "ratio", "percent", "pct", "day", "duration", "age", "latency",
+    "index", "temperature", "height", "speed", "share", "discount",
+    "satisfaction", "nps", "csat", "utilisation", "utilization", "aov",
+    "probability", "margin_pct", "tenure",
+)
+_YEAR_NAME = NameHint("year", "yr", "fy", "fiscal_year")
+
